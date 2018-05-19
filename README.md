@@ -1,1 +1,2 @@
-# smartcontract
+# Contract
+smart contract source
