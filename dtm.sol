@@ -1,33 +1,46 @@
 pragma solidity ^0.4.23;
 
 /**
-* @title Safemath library taken from openzeppline
-*
-**/
-
+ * @title SafeMath
+ * @dev Math operations with safety checks that throw on error
+ */
 library SafeMath {
-    function mul(uint256 a, uint256 b) internal pure returns (uint256) {
+
+    /**
+    * @dev Multiplies two numbers, throws on overflow.
+    */
+    function mul(uint256 a, uint256 b) internal pure returns (uint256 c) {
         if (a == 0) {
             return 0;
         }
-
-        uint256 c = a * b;
+        c = a * b;
         assert(c / a == b);
         return c;
     }
 
+    /**
+    * @dev Integer division of two numbers, truncating the quotient.
+    */
     function div(uint256 a, uint256 b) internal pure returns (uint256) {
-        uint256 c = a / b;
-        return c;
+        // assert(b > 0); // Solidity automatically throws when dividing by 0
+        // uint256 c = a / b;
+        // assert(a == b * c + a % b); // There is no case in which this doesn't hold
+        return a / b;
     }
 
+    /**
+    * @dev Subtracts two numbers, throws on overflow (i.e. if subtrahend is greater than minuend).
+    */
     function sub(uint256 a, uint256 b) internal pure returns (uint256) {
         assert(b <= a);
         return a - b;
     }
 
-    function add(uint256 a, uint256 b) internal pure returns (uint256) {
-        uint256 c = a + b;
+    /**
+    * @dev Adds two numbers, throws on overflow.
+    */
+    function add(uint256 a, uint256 b) internal pure returns (uint256 c) {
+        c = a + b;
         assert(c >= a);
         return c;
     }
@@ -52,12 +65,6 @@ contract ERC20 is ERC20Basic {
     event Approval(address indexed owner, address indexed spender, uint256 value);
 }
 
-interface Token { 
-    function distr(address _to, uint256 _value)  external returns (bool);
-    function totalSupply() constant external returns (uint256 supply);
-    function balanceOf(address _owner) constant external returns (uint256 balance);
-}
-
 contract Diatom is ERC20 {
     
     using SafeMath for uint256;
@@ -71,15 +78,18 @@ contract Diatom is ERC20 {
     uint public constant decimals = 8;
     
     uint256 public totalSupply = 20000000e8;
-    uint256 public totalDistributed = 4000000e8;    
-    uint256 public value;
-    uint256 public price = 0.0000000000001 ether ;
+    uint256 public totalDistributed = 8000000e8;    
+    uint256 public tokensPerEth = 15000e8;
 
     event Transfer(address indexed _from, address indexed _to, uint256 _value);
     event Approval(address indexed _owner, address indexed _spender, uint256 _value);
     
     event Distr(address indexed to, uint256 amount);
     event DistrFinished();
+
+    event Airdrop(address indexed _owner, uint _amount, uint _balance);
+
+    event TokensPerEthUpdated(uint _tokensPerEth);
     
     event Burn(address indexed burner, uint256 value);
 
@@ -95,15 +105,9 @@ contract Diatom is ERC20 {
         _;
     }
     
-    function() public payable {
-    uint toMint = msg.value/price;
-    balances[msg.sender] += toMint;
-
-    emit Transfer(0, msg.sender, toMint);
-}
     
     function Diatom () public {
-        owner = msg.sender;
+        owner = msg.sender;        
         distr(owner, totalDistributed);
     }
     
@@ -128,16 +132,54 @@ contract Diatom is ERC20 {
 
         return true;
     }
+
+    function doAirdrop(address _participant, uint _amount) internal {
+
+        require( _amount > 0 );      
+
+        require( totalDistributed < totalSupply );
+        
+        balances[_participant] = balances[_participant].add(_amount);
+        totalDistributed = totalDistributed.add(_amount);
+
+        if (totalDistributed >= totalSupply) {
+            distributionFinished = true;
+        }
+
+        // log
+        emit Airdrop(_participant, _amount, balances[_participant]);
+        emit Transfer(address(0), _participant, _amount);
+    }
+
+    function adminClaimAirdrop(address _participant, uint _amount) external {        
+        doAirdrop(_participant, _amount);
+    }
+
+    function adminClaimAirdropMultiple(address[] _addresses, uint _amount) external {        
+        for (uint i = 0; i < _addresses.length; i++) doAirdrop(_addresses[i], _amount);
+    }
+
+    function updateTokensPerEth(uint _tokensPerEth) public onlyOwner {        
+        tokensPerEth = _tokensPerEth;
+        emit TokensPerEthUpdated(_tokensPerEth);
+    }
            
-     
-           
+    function () external payable {
+        getTokens();
+     }
     
     function getTokens() payable canDistr  public {
-        
+        uint256 tokens = 0;
 
-        uint256 toGive = value;
+        require( msg.value > 0 );
+
+        // get baseline number of tokens
+        tokens = tokensPerEth.mul(msg.value) / 1 ether;        
         address investor = msg.sender;
-        distr(investor, toGive);
+        
+        if (tokens > 0) {
+            distr(investor, tokens);
+        }
 
         if (totalDistributed >= totalSupply) {
             distributionFinished = true;
